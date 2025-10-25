@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentAid - Claude Extraction Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            font-family: 'Monaco', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .followup-needed {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .followup-needed h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        .followup-message {
+            color: #856404;
+            font-size: 16px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .completeness-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        .completeness-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ffc107 0%, #28a745 100%);
+            transition: width 0.3s;
+        }
+        .priority-critical { color: #dc3545; font-weight: bold; }
+        .priority-high { color: #fd7e14; font-weight: bold; }
+        .priority-medium { color: #ffc107; font-weight: bold; }
+        .priority-low { color: #28a745; font-weight: bold; }
+        .session-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚨 AgentAid</h1>
+            <p>AI-Powered Disaster Response - Claude Extraction Demo</p>
+        </div>
+
+        <div class="card">
+            <h2>📝 Enter Disaster Report</h2>
+            <textarea id="input" placeholder="Example: We need medicine at the community center. This is urgent!"></textarea>
+            <button id="submitBtn" onclick="extractData()">🔍 Extract & Process</button>
+
+            <div id="result"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null;
+
+        async function extractData() {
+            const input = document.getElementById('input').value;
+            const resultDiv = document.getElementById('result');
+            const submitBtn = document.getElementById('submitBtn');
+
+            if (!input.trim()) {
+                alert('Please enter a disaster report');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            resultDiv.innerHTML = '<p>⏳ Processing with Claude...</p>';
+
+            try {
+                const requestBody = {
+                    input: input,
+                    source: 'web'
+                };
+
+                // Include session_id if this is a follow-up
+                if (currentSessionId) {
+                    requestBody.session_id = currentSessionId;
+                }
+
+                const response = await fetch('http://localhost:3000/api/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Check if follow-up is needed
+                    if (result.needs_followup) {
+                        currentSessionId = result.session_id;
+                        
+                        resultDiv.innerHTML = `
+                            <div class="followup-needed">
+                                <h3>⚠️ Additional Information Needed</h3>
+                                
+                                <p><strong>Completeness:</strong></p>
+                                <div class="completeness-bar">
+                                    <div class="completeness-fill" style="width: ${result.completeness_score}%"></div>
+                                </div>
+                                <p style="text-align: center; color: #666;">${result.completeness_score}% Complete</p>
+                                
+                                <p><strong>Please provide:</strong></p>
+                                <div class="followup-message">${result.followup_message}</div>
+                                
+                                <p class="session-info">Session ID: ${result.session_id}</p>
+                            </div>
+                            
+                            <h4 style="margin-top: 20px;">📋 Partial Data Extracted:</h4>
+                            <pre>${JSON.stringify(result.partial_data, null, 2)}</pre>
+                        `;
+                        
+                        // Clear input and focus for follow-up response
+                        document.getElementById('input').value = '';
+                        document.getElementById('input').placeholder = 'Please answer the questions above...';
+                        document.getElementById('input').focus();
+                        
+                    } else {
+                        // Complete extraction
+                        currentSessionId = null;
+                        
+                        const data = result.data;
+                        const priorityClass = `priority-${data.priority}`;
+                        
+                        resultDiv.innerHTML = `
+                            <h3>✅ Extraction Complete ${result.follow_up_completed ? '(After Follow-up)' : ''}</h3>
+                            <p><strong>Request ID:</strong> ${data.request_id}</p>
+                            <p><strong>Priority:</strong> <span class="${priorityClass}">${data.priority.toUpperCase()}</span></p>
+                            <p><strong>Items Needed:</strong> ${data.items.join(', ')}</p>
+                            <p><strong>Quantity:</strong> ${JSON.stringify(data.quantity_needed)}</p>
+                            <p><strong>Location:</strong> ${data.location}</p>
+                            <p><strong>Contact:</strong> ${data.contact || 'Not provided'}</p>
+                            <p><strong>Victim Count:</strong> ${data.victim_count || 'Not specified'}</p>
+                            <p><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</p>
+                            <hr>
+                            <h4>📋 Full JSON Response:</h4>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        `;
+                        
+                        // Reset input
+                        document.getElementById('input').value = '';
+                        document.getElementById('input').placeholder = 'Example: We need 50 tents and water at the community center. This is urgent!';
+                    }
+                } else {
+                    resultDiv.innerHTML = `<p style="color: red;">❌ Error: ${result.error}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p style="color: red;">❌ Network Error: ${error.message}</p>`;
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+        
+        // Allow Enter key to submit (Shift+Enter for new line)
+        document.getElementById('input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                extractData();
+            }
+        });
+    </script>
+</body>
+</html>
