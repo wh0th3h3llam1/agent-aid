@@ -6,9 +6,8 @@ dotenv.config();
 const pendingRequests = new Map();
 const agentUpdates = new Map();
 
-// Format data for uAgent consumption
+// Format data for uAgent consumption with coordinates
 export function formatForUAgent(structuredData) {
-  // Create a clean payload that uAgents can process
   const payload = {
     request_id: structuredData.request_id,
     need_type: 'disaster_relief',
@@ -16,7 +15,14 @@ export function formatForUAgent(structuredData) {
     quantity: structuredData.quantity_needed,
     location: {
       address: structuredData.location,
-      coordinates: null // Your friend can add geocoding later
+      coordinates: structuredData.coordinates ? {
+        latitude: structuredData.coordinates.latitude,
+        longitude: structuredData.coordinates.longitude,
+        formatted_address: structuredData.coordinates.formatted_address
+      } : null,
+      city: structuredData.coordinates?.city,
+      state: structuredData.coordinates?.state,
+      country: structuredData.coordinates?.country
     },
     priority: structuredData.priority,
     urgency_level: getPriorityScore(structuredData.priority),
@@ -24,10 +30,19 @@ export function formatForUAgent(structuredData) {
     timestamp: structuredData.timestamp,
     contact: structuredData.contact,
     additional_info: structuredData.additional_notes,
-    status: 'pending'
+    status: 'pending',
+    // Add geocoding metadata
+    geocoded: !!structuredData.coordinates,
+    geocoding_confidence: structuredData.coordinates?.confidence || 0
   };
 
   console.log(`📦 Formatted for uAgent: ${payload.request_id}`);
+  
+  if (payload.location.coordinates) {
+    console.log(`   📍 Coordinates: ${payload.location.coordinates.latitude}, ${payload.location.coordinates.longitude}`);
+  } else {
+    console.log(`   ⚠️  No coordinates available for this location`);
+  }
   
   // Store it for agent pickup
   pendingRequests.set(payload.request_id, payload);
@@ -49,6 +64,53 @@ function getPriorityScore(priority) {
 // Get pending requests (your friend's agent will poll this)
 export function getPendingRequests() {
   return Array.from(pendingRequests.values());
+}
+
+// Get requests within radius (for location-based matching)
+export function getRequestsNearLocation(latitude, longitude, radiusKm = 10) {
+  const nearbyRequests = [];
+  
+  for (const request of pendingRequests.values()) {
+    if (request.location.coordinates) {
+      const distance = calculateDistance(
+        latitude,
+        longitude,
+        request.location.coordinates.latitude,
+        request.location.coordinates.longitude
+      );
+      
+      if (distance <= radiusKm) {
+        nearbyRequests.push({
+          ...request,
+          distance_km: distance
+        });
+      }
+    }
+  }
+  
+  // Sort by distance
+  nearbyRequests.sort((a, b) => a.distance_km - b.distance_km);
+  
+  return nearbyRequests;
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  
+  return distance;
+}
+
+function toRad(degrees) {
+  return degrees * (Math.PI / 180);
 }
 
 // Get specific request by ID

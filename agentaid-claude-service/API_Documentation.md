@@ -1,241 +1,174 @@
-# AgentAid Backend - API Documentation for Fetch.ai Integration
+# AgentAid API Documentation - Fetch.ai Integration
 
 ## Backend URL
 ```
 http://localhost:3000
 ```
-*(I'll share production URL when deployed)*
 
----
+## Core Endpoints
 
-## Health Check
+### 1. Get Pending Requests
+**Endpoint:** `GET /api/uagent/pending-requests`
 
-**GET** `/health`
+**Description:** Poll this every 10 seconds to get new disaster requests.
 
-Check if backend is running.
-```bash
-curl http://localhost:3000/health
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "service": "AgentAid Claude Service",
-  "requests_processed": 5,
-  "pending_for_agents": 2,
-  "chromadb": {
-    "total_requests": 5,
-    "collection_name": "disaster_requests",
-    "embedding_type": "simple_text_based"
-  }
-}
-```
-
----
-
-## 1. Get Pending Requests
-
-**GET** `/api/uagent/pending-requests`
-
-Your agent polls this endpoint to get new disaster requests.
-
-**Response:**
-```json
-{
-  "success": true,
-  "count": 2,
-  "requests": [
-    {
-      "request_id": "REQ-1729876543210-abc123",
-      "need_type": "disaster_relief",
-      "items": ["tents", "water", "medical supplies"],
-      "quantity": {
-        "tents": 50,
-        "water": 200
-      },
-      "location": {
-        "address": "Main Street Community Center",
-        "coordinates": null
-      },
-      "priority": "high",
-      "urgency_level": 3,
-      "victim_count": 75,
-      "timestamp": "2025-10-25T20:00:00.000Z",
-      "contact": null,
-      "additional_info": "Building collapsed",
-      "status": "pending"
-    }
-  ]
-}
-```
-
-**Key Fields:**
-- `request_id` - Unique ID (use in all future calls)
+**Response Fields:**
+- `request_id` - Unique identifier
 - `items` - Array of needed items
-- `quantity` - Specific quantities or "low"/"medium"/"high"
+- `quantity` - Object with specific quantities
+- `location.address` - Text address
+- `location.coordinates.latitude` - Decimal degrees
+- `location.coordinates.longitude` - Decimal degrees
 - `priority` - "low", "medium", "high", "critical"
-- `urgency_level` - Number 1-4 (for sorting)
+- `urgency_level` - Number 1-4
 - `status` - "pending", "processing", "matched", "dispatched", "fulfilled"
+- `geocoded` - Boolean, true if coordinates available
+- `victim_count` - Number of people affected
+- `contact` - Phone number or contact info
 
 ---
 
-## 2. Claim a Request
+### 2. Get Nearby Requests
+**Endpoint:** `POST /api/uagent/requests-nearby`
 
-**POST** `/api/uagent/claim-request`
-
-Call this when your agent picks up a request.
-
-**Request:**
+**Request Body:**
 ```json
 {
-  "request_id": "REQ-1729876543210-abc123",
+  "latitude": 37.7749,
+  "longitude": -122.4194,
+  "radius_km": 50
+}
+```
+
+**Description:** Find requests within specified radius. Returns results sorted by distance.
+
+**Response:** Same as pending requests, plus `distance_km` field.
+
+---
+
+### 3. Claim a Request
+**Endpoint:** `POST /api/uagent/claim-request`
+
+**Request Body:**
+```json
+{
+  "request_id": "REQ-xxx",
   "agent_id": "your_agent_id",
-  "agent_address": "agent1q..." // Optional
+  "agent_address": "agent1q..."
 }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Request claimed by agent",
-  "request": {
-    "request_id": "REQ-1729876543210-abc123",
-    "status": "processing",
-    "agent_id": "your_agent_id",
-    "processed_at": "2025-10-25T20:05:00.000Z"
-  }
-}
-```
+**Description:** Call when your agent picks up a request.
 
 ---
 
-## 3. Send Status Updates
+### 4. Send Status Updates
+**Endpoint:** `POST /api/uagent/update`
 
-**POST** `/api/uagent/update`
-
-Send updates as you process the request.
-
-**Request:**
+**Request Body:**
 ```json
 {
-  "request_id": "REQ-1729876543210-abc123",
+  "request_id": "REQ-xxx",
   "agent_id": "your_agent_id",
   "status": "matched",
   "matched_supplier": {
-    "supplier_id": "supply_agent_xyz",
-    "name": "Red Cross Bay Area",
-    "items": ["tents", "water"],
-    "quantity": {"tents": 50, "water": 200}
+    "supplier_id": "supply_xxx",
+    "name": "Supplier Name"
   },
   "eta": "2025-10-25T22:00:00.000Z"
 }
 ```
 
-**Status Options:**
+**Status Values:**
 - `pending` - Waiting
-- `processing` - Agent working on it
+- `processing` - Agent working
 - `matched` - Supplier found
 - `dispatched` - Aid en route
 - `fulfilled` - Delivered
 - `cancelled` - Cancelled
 
-**Response:**
+---
+
+### 5. Calculate Distance
+**Endpoint:** `POST /api/distance`
+
+**Request Body:**
 ```json
 {
-  "success": true,
-  "message": "Update received"
+  "lat1": 37.7749,
+  "lon1": -122.4194,
+  "lat2": 37.8044,
+  "lon2": -122.2712
 }
 ```
 
----
-
-## 4. Get Similar Requests (Optional)
-
-**POST** `/api/search/similar`
-
-Get similar past requests (for context/learning).
-
-**Request:**
-```json
-{
-  "query": "medical supplies hospital",
-  "limit": 5
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "request_id": "REQ-xxx",
-      "similarity_score": 0.87,
-      "metadata": {
-        "priority": "critical",
-        "location": "County Hospital"
-      }
-    }
-  ]
-}
-```
+**Response:** Distance in kilometers and miles.
 
 ---
 
-## Expected Flow
-```
-1. Your agent polls: GET /api/uagent/pending-requests
-2. Your agent claims: POST /api/uagent/claim-request
-3. Your agent matches with supplier
-4. Your agent updates: POST /api/uagent/update (status: "matched")
-5. Your agent dispatches aid
-6. Your agent updates: POST /api/uagent/update (status: "dispatched")
-7. Aid delivered
-8. Your agent updates: POST /api/uagent/update (status: "fulfilled")
-```
+### 6. Get Specific Request
+**Endpoint:** `GET /api/uagent/request/:id`
+
+**Description:** Get details for a specific request by ID.
 
 ---
 
-## Test Commands
+### 7. Health Check
+**Endpoint:** `GET /health`
+
+**Description:** Check if backend is running.
+
+---
+
+## Integration Workflow
+```
+1. Poll: GET /api/uagent/pending-requests
+2. Claim: POST /api/uagent/claim-request
+3. [Your matching logic]
+4. Update: POST /api/uagent/update (status: "matched")
+5. Update: POST /api/uagent/update (status: "dispatched")
+6. Update: POST /api/uagent/update (status: "fulfilled")
+```
+
+
+
+## Testing Commands
 ```bash
-# Check health
+# Check backend
 curl http://localhost:3000/health
 
 # Get pending requests
 curl http://localhost:3000/api/uagent/pending-requests
 
-# Create test request (so you have something to work with)
+# Create test request
 curl -X POST http://localhost:3000/api/extract \
   -H "Content-Type: application/json" \
-  -d '{"input": "Need 50 tents urgently", "source": "test"}'
+  -d '{"input": "Need 50 tents at Main Street. Contact: 555-1234", "source": "test"}'
+
+# Test nearby search
+curl -X POST http://localhost:3000/api/uagent/requests-nearby \
+  -H "Content-Type: application/json" \
+  -d '{"latitude": 37.7749, "longitude": -122.4194, "radius_km": 50}'
 ```
 
----
+## Important Notes
 
-## Questions?
+- Poll every 10 seconds (not faster than 5s, not slower than 30s)
+- Always check if `coordinates` exist before using them
+- Use `geocoded: true` to verify coordinates are available
+- `urgency_level` is numeric (1-4) for sorting priority
+- All timestamps are in ISO 8601 format
+- Requests are sorted by distance in nearby search
 
-Let me know if you need anything else or want to test the integration together!
+## Checklist
 
-My backend is running on: `http://localhost:3000`
-```
+- [ ] Agent can connect to `/health`
+- [ ] Agent can poll `/api/uagent/pending-requests`
+- [ ] Agent can claim requests
+- [ ] Agent can send status updates
+- [ ] Agent uses coordinates for routing
+- [ ] Tested end-to-end flow
 
----
+## Contact
 
-## **📧 Message to Send Your Friend**
-```
-Hey! My Claude + ChromaDB backend is ready for integration.
-
-📄 See attached: API_DOCUMENTATION.md
-
-🔗 Backend URL: http://localhost:3000
-
-📋 TL;DR:
-- Poll: GET /api/uagent/pending-requests
-- Claim: POST /api/uagent/claim-request  
-- Update: POST /api/uagent/update
-
-✅ Status: Running and tested
-
-Let me know when you're ready to test the integration!
+Ready to integrate! Let's test together when you're ready.

@@ -14,6 +14,7 @@ import {
   formatForUAgent,
   getPendingRequests,
   getRequestById,
+  getRequestsNearLocation,
   markAsProcessed,
   receiveAgentUpdate,
   getAgentUpdates,
@@ -26,6 +27,12 @@ import {
   getSession,
   deleteSession
 } from './services/followupService.js';
+import { 
+  geocodeAddress, 
+  calculateDistance, 
+  findNearestLocation,
+  batchGeocode 
+} from './services/geocodingService.js';
 
 dotenv.config();
 
@@ -46,6 +53,10 @@ const requests = [];
 // Initialize ChromaDB
 await initChromaDB();
 
+// ========================================
+// HEALTH & STATUS ENDPOINTS
+// ========================================
+
 // Health check
 app.get('/health', async (req, res) => {
   const chromaStats = await getStats();
@@ -54,19 +65,59 @@ app.get('/health', async (req, res) => {
   res.json({ 
     status: 'ok', 
     service: 'AgentAid Claude Service',
+    version: '2.0.0',
     requests_processed: requests.length,
     pending_for_agents: pendingCount,
     chromadb: chromaStats,
     features: {
-      followup_system: 'active',
       claude_extraction: 'active',
-      chromadb: 'active',
-      uagent_integration: 'active'
+      followup_system: 'active',
+      chromadb_search: 'active',
+      geocoding: 'active',
+      uagent_integration: 'active',
+      session_management: 'active'
     }
   });
 });
 
-// Main extraction endpoint with intelligent follow-up system
+// Get system statistics
+app.get('/api/stats', async (req, res) => {
+  try {
+    const chromaStats = await getStats();
+    const allRequests = requests;
+    
+    const stats = {
+      total_requests: allRequests.length,
+      pending_for_agents: getPendingRequests().length,
+      by_priority: {
+        critical: allRequests.filter(r => r.priority === 'critical').length,
+        high: allRequests.filter(r => r.priority === 'high').length,
+        medium: allRequests.filter(r => r.priority === 'medium').length,
+        low: allRequests.filter(r => r.priority === 'low').length
+      },
+      geocoded_requests: allRequests.filter(r => r.coordinates).length,
+      chromadb: chromaStats,
+      uptime: process.uptime(),
+      memory_usage: process.memoryUsage()
+    };
+    
+    res.json({
+      success: true,
+      stats: stats
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ========================================
+// MAIN EXTRACTION ENDPOINTS
+// ========================================
+
+// Main extraction endpoint with intelligent follow-up system and geocoding
 app.post('/api/extract', async (req, res) => {
   try {
     const { input, source, session_id } = req.body;
@@ -75,7 +126,10 @@ app.post('/api/extract', async (req, res) => {
       return res.status(400).json({ error: 'Input text is required' });
     }
 
-    console.log(`📥 Processing ${source || 'text'} input:`, input.substring(0, 100));
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`📥 Processing ${source || 'text'} input`);
+    console.log(`   Input: ${input.substring(0, 100)}${input.length > 100 ? '...' : ''}`);
+    console.log('='.repeat(80));
 
     // ========================================
     // FOLLOW-UP RESPONSE HANDLING
@@ -84,7 +138,7 @@ app.post('/api/extract', async (req, res) => {
       const session = getSession(session_id);
       
       if (session) {
-        console.log(`🔄 Processing follow-up for session: ${session_id}`);
+        console.log(`\n🔄 Processing follow-up for session: ${session_id}`);
         
         try {
           // Merge follow-up response with original data
@@ -107,8 +161,15 @@ app.post('/api/extract', async (req, res) => {
           // Clean up session
           deleteSession(session_id);
           
-          console.log(`✅ Follow-up completed: ${mergedData.request_id}`);
+          console.log(`\n✅ Follow-up completed: ${mergedData.request_id}`);
+          console.log(`   Items: ${mergedData.items.join(', ')}`);
+          console.log(`   Location: ${mergedData.location}`);
+          if (mergedData.coordinates) {
+            console.log(`   Coordinates: ${mergedData.coordinates.latitude}, ${mergedData.coordinates.longitude}`);
+          }
+          console.log(`   Priority: ${mergedData.priority}`);
           console.log(`📦 Available for uAgent pickup`);
+          console.log('='.repeat(80) + '\n');
           
           return res.json({
             success: true,
@@ -133,11 +194,21 @@ app.post('/api/extract', async (req, res) => {
     // ========================================
     // INITIAL EXTRACTION
     // ========================================
+    console.log('\n🤖 Claude extracting data...');
     const structuredData = await extractDisasterData(input);
+    
+    console.log('✅ Extraction complete');
+    console.log(`   Items: ${structuredData.items.join(', ')}`);
+    console.log(`   Location: ${structuredData.location || 'Not provided'}`);
+    if (structuredData.coordinates) {
+      console.log(`   Coordinates: ${structuredData.coordinates.latitude}, ${structuredData.coordinates.longitude}`);
+    }
+    console.log(`   Contact: ${structuredData.contact || 'Not provided'}`);
     
     // ========================================
     // CHECK IF FOLLOW-UP NEEDED
     // ========================================
+    console.log('\n🔍 Checking completeness...');
     const followupCheck = await generateFollowupQuestions(structuredData, input);
     
     if (followupCheck && followupCheck.needs_followup) {
@@ -148,7 +219,7 @@ app.post('/api/extract', async (req, res) => {
         source: source
       });
       
-      console.log(`⚠️  Incomplete data detected - requesting follow-up`);
+      console.log(`\n⚠️  Incomplete data detected - requesting follow-up`);
       console.log(`   Completeness Score: ${followupCheck.completeness_score}%`);
       console.log(`   Session ID: ${followupCheck.session_id}`);
       console.log(`   Issues Found: ${followupCheck.issues.length}`);
@@ -156,6 +227,7 @@ app.post('/api/extract', async (req, res) => {
       followupCheck.issues.forEach((issue, index) => {
         console.log(`   ${index + 1}. ${issue.type}: ${issue.field}`);
       });
+      console.log('='.repeat(80) + '\n');
       
       return res.json({
         success: true,
@@ -172,6 +244,8 @@ app.post('/api/extract', async (req, res) => {
     // ========================================
     // DATA IS COMPLETE - PROCESS NORMALLY
     // ========================================
+    console.log(`✅ Data is complete (100%)`);
+    
     await storeRequest(structuredData);
     requests.push(structuredData);
 
@@ -181,8 +255,9 @@ app.post('/api/extract', async (req, res) => {
     // Format for uAgent
     const agentPayload = formatForUAgent(structuredData);
 
-    console.log(`✅ Processed ${structuredData.request_id}`);
+    console.log(`\n✅ Processed ${structuredData.request_id}`);
     console.log(`📦 Available for uAgent pickup`);
+    console.log('='.repeat(80) + '\n');
 
     res.json({
       success: true,
@@ -195,7 +270,8 @@ app.post('/api/extract', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Extraction error:', error);
+    console.error('\n❌ Extraction error:', error);
+    console.log('='.repeat(80) + '\n');
     res.status(500).json({
       success: false,
       error: error.message
@@ -212,7 +288,7 @@ app.post('/api/extract/batch', async (req, res) => {
       return res.status(400).json({ error: 'Inputs must be an array' });
     }
 
-    console.log(`📦 Processing batch of ${inputs.length} requests`);
+    console.log(`\n📦 Processing batch of ${inputs.length} requests`);
 
     const results = [];
     const followupsNeeded = [];
@@ -226,7 +302,8 @@ app.post('/api/extract/batch', async (req, res) => {
         followupsNeeded.push({
           input: input,
           session_id: followupCheck.session_id,
-          issues: followupCheck.issues
+          issues: followupCheck.issues,
+          completeness_score: followupCheck.completeness_score
         });
         
         storeSession(followupCheck.session_id, {
@@ -241,6 +318,8 @@ app.post('/api/extract/batch', async (req, res) => {
         results.push({ data, agentPayload });
       }
     }
+
+    console.log(`✅ Batch complete: ${results.length} processed, ${followupsNeeded.length} need follow-up\n`);
 
     res.json({
       success: true,
@@ -259,7 +338,9 @@ app.post('/api/extract/batch', async (req, res) => {
   }
 });
 
-// 🤖 UAGENT ENDPOINTS
+// ========================================
+// UAGENT ENDPOINTS
+// ========================================
 
 // Get all pending requests (your friend's agent polls this)
 app.get('/api/uagent/pending-requests', (req, res) => {
@@ -289,6 +370,45 @@ app.get('/api/uagent/request/:id', (req, res) => {
   });
 });
 
+// Get requests near a location (for agents to find nearby needs)
+app.post('/api/uagent/requests-nearby', (req, res) => {
+  try {
+    const { latitude, longitude, radius_km } = req.body;
+    
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        error: 'latitude and longitude required'
+      });
+    }
+    
+    const nearbyRequests = getRequestsNearLocation(
+      parseFloat(latitude),
+      parseFloat(longitude),
+      parseFloat(radius_km) || 10
+    );
+    
+    console.log(`📍 Nearby search: ${nearbyRequests.length} requests within ${radius_km || 10}km`);
+    
+    res.json({
+      success: true,
+      count: nearbyRequests.length,
+      search_location: { 
+        latitude: parseFloat(latitude), 
+        longitude: parseFloat(longitude) 
+      },
+      radius_km: parseFloat(radius_km) || 10,
+      requests: nearbyRequests
+    });
+    
+  } catch (error) {
+    console.error('Nearby search error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Agent confirms pickup of request
 app.post('/api/uagent/claim-request', (req, res) => {
   const { request_id, agent_id, agent_address } = req.body;
@@ -305,6 +425,8 @@ app.post('/api/uagent/claim-request', (req, res) => {
     return res.status(404).json({ error: 'Request not found' });
   }
 
+  console.log(`✅ Request claimed: ${request_id} by ${agent_id}`);
+
   res.json({
     success: true,
     message: 'Request claimed by agent',
@@ -317,7 +439,13 @@ app.post('/api/uagent/update', (req, res) => {
   try {
     const updateData = req.body;
     
-    console.log(`📥 uAgent Update: ${updateData.request_id}`);
+    console.log(`\n📥 uAgent Update: ${updateData.request_id}`);
+    console.log(`   Agent: ${updateData.agent_id}`);
+    console.log(`   Status: ${updateData.status}`);
+    
+    if (updateData.matched_supplier) {
+      console.log(`   Supplier: ${updateData.matched_supplier.name}`);
+    }
     
     const result = receiveAgentUpdate(updateData);
 
@@ -356,6 +484,109 @@ app.post('/api/uagent/cleanup', (req, res) => {
   });
 });
 
+// ========================================
+// GEOCODING ENDPOINTS
+// ========================================
+
+// Geocode a single address
+app.post('/api/geocode', async (req, res) => {
+  try {
+    const { address } = req.body;
+    
+    if (!address) {
+      return res.status(400).json({ error: 'Address is required' });
+    }
+    
+    console.log(`🌍 Geocoding request: "${address}"`);
+    
+    const result = await geocodeAddress(address);
+    
+    if (result) {
+      console.log(`✅ Geocoded: ${result.latitude}, ${result.longitude}`);
+      res.json({
+        success: true,
+        geocoded: result
+      });
+    } else {
+      console.log(`⚠️  Could not geocode: "${address}"`);
+      res.status(404).json({
+        success: false,
+        error: 'Could not geocode address'
+      });
+    }
+  } catch (error) {
+    console.error('Geocoding error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Batch geocode multiple addresses
+app.post('/api/geocode/batch', async (req, res) => {
+  try {
+    const { addresses } = req.body;
+    
+    if (!Array.isArray(addresses)) {
+      return res.status(400).json({ error: 'addresses must be an array' });
+    }
+    
+    console.log(`🌍 Batch geocoding ${addresses.length} addresses`);
+    
+    const results = await batchGeocode(addresses);
+    
+    res.json({
+      success: true,
+      count: results.length,
+      results: results
+    });
+    
+  } catch (error) {
+    console.error('Batch geocoding error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Calculate distance between two coordinates
+app.post('/api/distance', (req, res) => {
+  try {
+    const { lat1, lon1, lat2, lon2 } = req.body;
+    
+    if (!lat1 || !lon1 || !lat2 || !lon2) {
+      return res.status(400).json({
+        error: 'All coordinates required: lat1, lon1, lat2, lon2'
+      });
+    }
+    
+    const distance = calculateDistance(
+      parseFloat(lat1),
+      parseFloat(lon1),
+      parseFloat(lat2),
+      parseFloat(lon2)
+    );
+    
+    res.json({
+      success: true,
+      distance_km: distance,
+      distance_miles: distance * 0.621371
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ========================================
+// SEARCH ENDPOINTS
+// ========================================
+
 // Search similar requests
 app.post('/api/search/similar', async (req, res) => {
   try {
@@ -365,7 +596,11 @@ app.post('/api/search/similar', async (req, res) => {
       return res.status(400).json({ error: 'Query is required' });
     }
 
+    console.log(`🔍 Similarity search: "${query}"`);
+
     const results = await findSimilarRequests(query, limit || 5);
+
+    console.log(`   Found ${results.length} similar requests`);
 
     res.json({
       success: true,
@@ -382,6 +617,10 @@ app.post('/api/search/similar', async (req, res) => {
   }
 });
 
+// ========================================
+// REQUEST MANAGEMENT ENDPOINTS
+// ========================================
+
 // Get all requests
 app.get('/api/requests', (req, res) => {
   res.json({
@@ -393,7 +632,8 @@ app.get('/api/requests', (req, res) => {
       high: requests.filter(r => r.priority === 'high').length,
       medium: requests.filter(r => r.priority === 'medium').length,
       low: requests.filter(r => r.priority === 'low').length
-    }
+    },
+    geocoded: requests.filter(r => r.coordinates).length
   });
 });
 
@@ -424,29 +664,27 @@ app.get('/api/requests/priority/:priority', (req, res) => {
   });
 });
 
-// Cancel a session (if user wants to start over)
-app.post('/api/session/cancel', (req, res) => {
-  const { session_id } = req.body;
+// Delete a specific request
+app.delete('/api/requests/:id', (req, res) => {
+  const index = requests.findIndex(r => r.request_id === req.params.id);
   
-  if (!session_id) {
-    return res.status(400).json({ error: 'session_id required' });
+  if (index === -1) {
+    return res.status(404).json({ error: 'Request not found' });
   }
   
-  const session = getSession(session_id);
+  const deleted = requests.splice(index, 1)[0];
+  console.log(`🗑️  Deleted request: ${deleted.request_id}`);
   
-  if (session) {
-    deleteSession(session_id);
-    res.json({
-      success: true,
-      message: 'Session cancelled'
-    });
-  } else {
-    res.status(404).json({
-      success: false,
-      error: 'Session not found or already expired'
-    });
-  }
+  res.json({
+    success: true,
+    message: 'Request deleted',
+    deleted: deleted
+  });
 });
+
+// ========================================
+// SESSION MANAGEMENT ENDPOINTS
+// ========================================
 
 // Get session info (for debugging)
 app.get('/api/session/:session_id', (req, res) => {
@@ -465,28 +703,76 @@ app.get('/api/session/:session_id', (req, res) => {
       session_id: req.params.session_id,
       created_at: session.created_at,
       expires_at: session.expires_at,
-      has_data: !!session.original_data
+      has_data: !!session.original_data,
+      original_input: session.original_input
     }
   });
 });
 
-// Start server
+// Cancel a session (if user wants to start over)
+app.post('/api/session/cancel', (req, res) => {
+  const { session_id } = req.body;
+  
+  if (!session_id) {
+    return res.status(400).json({ error: 'session_id required' });
+  }
+  
+  const session = getSession(session_id);
+  
+  if (session) {
+    deleteSession(session_id);
+    console.log(`🗑️  Session cancelled: ${session_id}`);
+    res.json({
+      success: true,
+      message: 'Session cancelled'
+    });
+  } else {
+    res.status(404).json({
+      success: false,
+      error: 'Session not found or already expired'
+    });
+  }
+});
+
+// ========================================
+// START SERVER
+// ========================================
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('\n' + '='.repeat(60));
-  console.log('🚀 AgentAid Claude Service');
-  console.log('='.repeat(60));
-  console.log(`\n📊 Server Status:`);
+  console.log('\n' + '█'.repeat(80));
+  console.log('█' + ' '.repeat(78) + '█');
+  console.log('█' + '  🚨 AGENTAID - DISASTER RESPONSE SYSTEM'.padEnd(78) + '█');
+  console.log('█' + '  Powered by Claude Sonnet 4.5 + Fetch.ai'.padEnd(78) + '█');
+  console.log('█' + ' '.repeat(78) + '█');
+  console.log('█'.repeat(80));
+  
+  console.log('\n📊 SERVER STATUS:');
   console.log(`   Port: ${PORT}`);
+  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Local: http://localhost:${PORT}`);
-  console.log(`   Health: http://localhost:${PORT}/health`);
-  console.log(`\n🤖 Fetch.ai Integration:`);
-  console.log(`   Pending: http://localhost:${PORT}/api/uagent/pending-requests`);
-  console.log(`   Updates: http://localhost:${PORT}/api/uagent/update`);
-  console.log(`\n💾 Features:`);
-  console.log(`   ✅ Claude Extraction (Sonnet 4.5)`);
-  console.log(`   ✅ ChromaDB Vector Search`);
-  console.log(`   ✅ Intelligent Follow-up System`);
-  console.log(`   ✅ uAgent Integration`);
-  console.log(`   ✅ Session Management`);
-  console.log('\n' + '='.repeat(60) + '\n');
+  console.log(`   Network: http://0.0.0.0:${PORT}`);
+  
+  console.log('\n🔗 KEY ENDPOINTS:');
+  console.log(`   Health Check: http://localhost:${PORT}/health`);
+  console.log(`   Extract: POST http://localhost:${PORT}/api/extract`);
+  console.log(`   Geocode: POST http://localhost:${PORT}/api/geocode`);
+  
+  console.log('\n🤖 FETCH.AI INTEGRATION:');
+  console.log(`   Pending: GET http://localhost:${PORT}/api/uagent/pending-requests`);
+  console.log(`   Nearby: POST http://localhost:${PORT}/api/uagent/requests-nearby`);
+  console.log(`   Claim: POST http://localhost:${PORT}/api/uagent/claim-request`);
+  console.log(`   Update: POST http://localhost:${PORT}/api/uagent/update`);
+  
+  console.log('\n💾 FEATURES ENABLED:');
+  console.log('   ✅ Claude Sonnet 4.5 Extraction');
+  console.log('   ✅ Intelligent Follow-up System');
+  console.log('   ✅ ChromaDB Vector Search');
+  console.log('   ✅ Geocoding & Coordinates');
+  console.log('   ✅ Session Management');
+  console.log('   ✅ uAgent Integration');
+  console.log('   ✅ Multilingual Support');
+  console.log('   ✅ Priority-based Routing');
+  
+  console.log('\n🎯 READY FOR DEMO!');
+  console.log('█'.repeat(80) + '\n');
 });
