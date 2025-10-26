@@ -36,8 +36,8 @@ COORDINATOR_PORT = int(os.getenv("COORDINATOR_PORT", "8002"))
 CLAUDE_SERVICE_URL = os.getenv("CLAUDE_SERVICE_URL", "http://localhost:3000")
 
 # Agent addresses (will be discovered dynamically)
-NEED_AGENT_ADDRESSES = [a.strip() for a in os.getenv("NEED_AGENT_ADDRS", "").split(",") if a.strip()]
-SUPPLY_AGENT_ADDRESSES = [a.strip() for a in os.getenv("SUPPLY_AGENT_ADDRS", "").split(",") if a.strip()]
+NEED_AGENT_ADDRESSES = [a.strip() for a in os.getenv("NEED_AGENT_ADDRS", "http://localhost:8000").split(",") if a.strip()]
+SUPPLY_AGENT_ADDRESSES = [a.strip() for a in os.getenv("SUPPLY_AGENT_ADDRS", "[http://localhost:8001,http://localhost:8003]").split(",") if a.strip()]
 
 # Default agent addresses for testing
 DEFAULT_NEED_AGENT = "agent1qgw06us8yrrmnx40dq7vlm5vqyd25tv3qx3kyax9x5k2kz7kuguxjy4a8hu"
@@ -80,10 +80,10 @@ request_assignments: Dict[str, str] = {}  # request_id -> agent_id
 async def startup(ctx: Context):
     ctx.logger.info(f"[{COORDINATOR_NAME}] Address: {agent.address}")
     ctx.logger.info("Coordination Agent started - monitoring Claude service")
-    
+
     # Start monitoring Claude service for new requests
     asyncio.create_task(monitor_claude_service(ctx))
-    
+
     # Start agent discovery
     asyncio.create_task(discover_agents(ctx))
 
@@ -94,13 +94,13 @@ async def monitor_claude_service(ctx: Context):
             async with httpx.AsyncClient(timeout=10) as client:
                 # Get pending requests from Claude service
                 response = await client.get(f"{CLAUDE_SERVICE_URL}/api/uagent/pending-requests")
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("success") and data.get("requests"):
                         for req_data in data["requests"]:
                             await process_new_request(ctx, req_data)
-                
+
                 # Get agent updates
                 updates_response = await client.get(f"{CLAUDE_SERVICE_URL}/api/uagent/updates")
                 if updates_response.status_code == 200:
@@ -108,11 +108,11 @@ async def monitor_claude_service(ctx: Context):
                     if updates_data.get("success") and updates_data.get("updates"):
                         for update in updates_data["updates"]:
                             await process_agent_update(ctx, update)
-                            
+
         except Exception as e:
             # Don't log error every time - just wait and try again
             pass
-        
+
         await asyncio.sleep(10)  # Poll every 10 seconds
 
 async def discover_agents(ctx: Context):
@@ -121,7 +121,7 @@ async def discover_agents(ctx: Context):
         try:
             # In a real implementation, this would use agent discovery protocols
             # For now, we'll use environment variables and direct communication
-            
+
             # Register known need agents
             for addr in NEED_AGENT_ADDRESSES:
                 if addr not in agent_registry:
@@ -133,7 +133,7 @@ async def discover_agents(ctx: Context):
                         last_seen=time.time(),
                         capabilities=["disaster_assessment", "priority_evaluation"]
                     )
-            
+
             # Register known supply agents
             for addr in SUPPLY_AGENT_ADDRESSES:
                 if addr not in agent_registry:
@@ -145,19 +145,19 @@ async def discover_agents(ctx: Context):
                         last_seen=time.time(),
                         capabilities=["inventory_management", "logistics_coordination"]
                     )
-                    
+
         except Exception as e:
             ctx.logger.error(f"Error in agent discovery: {e}")
-        
+
         await asyncio.sleep(30)  # Check every 30 seconds
 
 async def process_new_request(ctx: Context, req_data: Dict[str, Any]):
     """Process a new disaster request from Claude service"""
     request_id = req_data.get("request_id")
-    
+
     if request_id in active_requests:
         return  # Already processed
-    
+
     # Create disaster request object
     disaster_req = DisasterRequest(
         request_id=request_id,
@@ -171,17 +171,17 @@ async def process_new_request(ctx: Context, req_data: Dict[str, Any]):
         timestamp=req_data.get("timestamp", ""),
         status="pending"
     )
-    
+
     active_requests[request_id] = disaster_req
-    
+
     ctx.logger.info(f"New disaster request: {request_id}")
     ctx.logger.info(f"  Items: {disaster_req.items}")
     ctx.logger.info(f"  Location: {disaster_req.location}")
     ctx.logger.info(f"  Priority: {disaster_req.priority}")
-    
+
     # Assign to appropriate agents
     await assign_request_to_agents(ctx, disaster_req)
-    
+
     # Emit telemetry
     await emit({
         "ts": time.time(),
@@ -195,19 +195,24 @@ async def process_new_request(ctx: Context, req_data: Dict[str, Any]):
 
 async def assign_request_to_agents(ctx: Context, disaster_req: DisasterRequest):
     """Assign disaster request to appropriate need and supply agents"""
-    
+
+    print(f"In assign_request_to_agents, disaster_req: {disaster_req}")
     # Find available need agents
-    need_agents = [agent for agent in agent_registry.values() 
+    need_agents = [agent for agent in agent_registry.values()
                    if agent.agent_type == "need" and agent.status == "active"]
-    
+
+
     # Find available supply agents
-    supply_agents = [agent for agent in agent_registry.values() 
+    supply_agents = [agent for agent in agent_registry.values()
                      if agent.agent_type == "supply" and agent.status == "active"]
-    
+
+    print(f"In assign_request_to_agents, need_agents: {need_agents}, supply_agents: {supply_agents}")
+
+
     if not need_agents or not supply_agents:
         ctx.logger.warning(f"No available agents for request {disaster_req.request_id}")
         return
-    
+
     # Create quote request for need agents
     if disaster_req.coordinates:
         geo = Geo(
@@ -218,7 +223,9 @@ async def assign_request_to_agents(ctx: Context, disaster_req: DisasterRequest):
     else:
         # Default coordinates if not available
         geo = Geo(lat=37.8715, lon=-122.2730, label=disaster_req.location)
-    
+
+    print(f"In assign_request_to_agents, geo: {geo}")
+
     # Convert items to Item objects
     items = []
     for item_name in disaster_req.items:
@@ -227,7 +234,7 @@ async def assign_request_to_agents(ctx: Context, disaster_req: DisasterRequest):
             qty=1,  # Default quantity, should be parsed from quantity_needed
             unit="ea"
         ))
-    
+
     quote_req = QuoteRequest(
         need_id=disaster_req.request_id,
         location=geo,
@@ -235,7 +242,7 @@ async def assign_request_to_agents(ctx: Context, disaster_req: DisasterRequest):
         priority=disaster_req.priority,
         max_eta_hours=24.0  # Default max ETA
     )
-    
+
     # Send to need agents
     for need_agent in need_agents:
         try:
@@ -243,7 +250,7 @@ async def assign_request_to_agents(ctx: Context, disaster_req: DisasterRequest):
             ctx.logger.info(f"Sent quote request to need agent: {need_agent.agent_id}")
         except Exception as e:
             ctx.logger.error(f"Failed to send to need agent {need_agent.agent_id}: {e}")
-    
+
     # Send to supply agents
     for supply_agent in supply_agents:
         try:
@@ -251,7 +258,7 @@ async def assign_request_to_agents(ctx: Context, disaster_req: DisasterRequest):
             ctx.logger.info(f"Sent quote request to supply agent: {supply_agent.agent_id}")
         except Exception as e:
             ctx.logger.error(f"Failed to send to supply agent {supply_agent.agent_id}: {e}")
-    
+
     # Mark as assigned
     request_assignments[disaster_req.request_id] = "assigned"
     disaster_req.status = "processing"
@@ -261,11 +268,11 @@ async def process_agent_update(ctx: Context, update: Dict[str, Any]):
     request_id = update.get("request_id")
     agent_id = update.get("agent_id")
     status = update.get("status")
-    
+
     if request_id in active_requests:
         active_requests[request_id].status = status
         ctx.logger.info(f"Request {request_id} status updated to: {status}")
-        
+
         # Emit telemetry
         await emit({
             "ts": time.time(),
@@ -284,7 +291,7 @@ async def on_quote_response(ctx: Context, sender: str, resp: QuoteResponse):
     ctx.logger.info(f"Quote response from {sender}: {resp.supplier_id}")
     ctx.logger.info(f"  Cost: ${resp.total_cost}, ETA: {resp.eta_hours}h")
     ctx.logger.info(f"  Coverage: {resp.coverage_ratio}")
-    
+
     # Emit telemetry
     await emit({
         "ts": time.time(),
@@ -303,11 +310,11 @@ async def on_allocation_notice(ctx: Context, sender: str, notice: AllocationNoti
     """Handle allocation confirmations"""
     ctx.logger.info(f"Allocation confirmed by {notice.supplier_id}")
     ctx.logger.info(f"  Items: {[f'{i.name}:{i.qty}' for i in notice.items]}")
-    
+
     # Update request status
     if notice.need_id in active_requests:
         active_requests[notice.need_id].status = "allocated"
-    
+
     # Emit telemetry
     await emit({
         "ts": time.time(),
