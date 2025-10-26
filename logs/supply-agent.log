@@ -1,0 +1,20 @@
+
+================================================================================
+📦 AgentAid Supply Agent - FIXED VERSION
+================================================================================
+Agent Address: agent1q0teepydaltv70mnht98uwcxz6murcysrm782k4qge58pap4w6vaqhea6y9
+Supplier Location: SF Depot
+Endpoint: http://localhost:8001
+Port: 8001
+Inventory Items: 9
+Total Units: 3500
+================================================================================
+
+INFO:     Started server process [48599]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [48599]

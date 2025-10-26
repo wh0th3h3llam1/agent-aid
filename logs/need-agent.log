@@ -1,0 +1,19 @@
+
+================================================================================
+🚨 AgentAid Need Agent - FIXED VERSION
+================================================================================
+Agent Address: agent1qgw06us8yrrmnx40dq7vlm5vqyd25tv3qx3kyax9x5k2kz7kuguxjy4a8hu
+Endpoint: http://localhost:8000
+Port: 8000
+Supply Agents: 1
+Quote Timeout: 10s
+================================================================================
+
+INFO:     Started server process [48563]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [48563]
