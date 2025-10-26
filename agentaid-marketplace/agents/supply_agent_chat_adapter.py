@@ -6,18 +6,26 @@ Exposes the supply agent functionality via Chat Protocol for Agentverse deployme
 
 import os
 import json
-from typing import cast
+import math
+from typing import cast, Dict, Any
+from datetime import datetime, timedelta
 from fastapi import FastAPI
 from uagents_core.contrib.protocols.chat import ChatMessage, TextContent
 from uagents_core.envelope import Envelope
 from uagents_core.identity import Identity
+from uagents_core.models import Model
 from uagents_core.utils.messages import parse_envelope, send_message_to_agent
 
 # Agent configuration
 AGENT_NAME = "AgentAid Supply Agent"
 AGENT_SEED_PHRASE = os.environ.get("AGENT_SEED_PHRASE", "supply_sf_store_1_demo_seed")
 AGENT_ENDPOINT = os.environ.get("AGENT_EXTERNAL_ENDPOINT", "http://localhost:8001")
-SUPPLIER_LOCATION = os.environ.get("SUPPLIER_LABEL", "SF Depot")
+SUPPLIER_LOCATION = os.environ.get("SUPPLIER_LABEL", "SF Medical Depot")
+
+# Supplier coordinates (San Francisco)
+SUPPLIER_LAT = float(os.environ.get("SUPPLIER_LAT", "37.7749"))
+SUPPLIER_LON = float(os.environ.get("SUPPLIER_LON", "-122.4194"))
+SERVICE_RADIUS_KM = 120
 
 # Create identity from seed
 identity = Identity.from_seed(AGENT_SEED_PHRASE, 0)
@@ -154,32 +162,207 @@ async def handle_message(env: Envelope):
         msg = cast(ChatMessage, parse_envelope(env, ChatMessage))
         user_message = msg.text()
 
-        print(f"Received message from {env.sender}: {user_message}")
+        print(f"Received message from {env.sender}: {user_message[:100]}...")
 
-        # Process the supply inquiry
-        response_text = process_supply_inquiry(user_message)
+        # Try to parse as JSON first (need request)
+        try:
+            need_request = json.loads(user_message)
+            print(f"📦 Received structured need request: {need_request.get('request_id', 'N/A')}")
+            response_text = generate_quote_json(need_request)
+        except json.JSONDecodeError:
+            # Fallback to text processing
+            response_text = process_supply_inquiry(user_message)
 
-        # Send response back to sender
-        send_message_to_agent(
-            destination=env.sender,
-            msg=ChatMessage([TextContent(response_text)]),
-            sender=identity,
-        )
+        # Return response message as ChatMessage envelope
+        response_msg = ChatMessage([TextContent(response_text)])
 
-        return {"status": "processed", "message": "Inquiry processed successfully"}
+        return {
+            "version": 1,
+            "sender": identity.address,
+            "target": env.sender,
+            "session": str(env.session),
+            "schema_digest": Model.build_schema_digest(ChatMessage),
+            "protocol_digest": env.protocol_digest,
+            "payload": response_msg.json()
+        }
+
+    except Exception as ex:  # pylint: disable=broad-except
+        error_msg = f"Error processing message: {str(ex)}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+
+        # Return error response
+        error_response = ChatMessage([TextContent(f"Sorry, I encountered an error: {str(ex)}")])
+
+        return {
+            "version": 1,
+            "sender": identity.address,
+            "target": env.sender,
+            "session": str(env.session),
+            "schema_digest": Model.build_schema_digest(ChatMessage),
+            "protocol_digest": env.protocol_digest,
+            "payload": error_response.json()
+        }
+
+def generate_quote_json(need_request: Dict[str, Any]) -> str:
+    """Generate a structured JSON quote for a need request"""
+    try:
+        # Extract request details
+        items = need_request.get("items", [])
+        quantity_needed = int(need_request.get("quantity_needed", 0)) if need_request.get("quantity_needed") else 100
+        location = need_request.get("location", "Unknown")
+        priority = need_request.get("priority", "medium")
+        request_id = need_request.get("request_id", "N/A")
+        coordinates = need_request.get("coordinates", {})
+
+        dest_lat = coordinates.get("latitude") if coordinates else None
+        dest_lon = coordinates.get("longitude") if coordinates else None
+
+        print(f"\n{'='*80}")
+        print(f"💰 GENERATING QUOTE")
+        print(f"{'='*80}")
+        print(f"Request ID: {request_id}")
+        print(f"Items: {', '.join(items)}")
+        print(f"Quantity: {quantity_needed}")
+        print(f"Destination: {location} ({dest_lat}, {dest_lon})")
+        print(f"Priority: {priority}")
+        print(f"{'='*80}\n")
+
+        # Check if location is within service radius
+        if dest_lat and dest_lon:
+            distance_km = calculate_distance(SUPPLIER_LAT, SUPPLIER_LON, dest_lat, dest_lon)
+            within_radius = distance_km <= SERVICE_RADIUS_KM
+        else:
+            distance_km = 30  # Default
+            within_radius = True
+
+        if not within_radius:
+            print(f"❌ Location outside service radius ({distance_km:.1f} km > {SERVICE_RADIUS_KM} km)")
+            return json.dumps({
+                "status": "rejected",
+                "reason": f"Location outside service radius ({distance_km:.1f} km > {SERVICE_RADIUS_KM} km)",
+                "supplier_location": SUPPLIER_LOCATION,
+                "service_radius_km": SERVICE_RADIUS_KM
+            })
+
+        # Get inventory
+        inventory = get_inventory_dict()
+
+        # Calculate what we can provide
+        items_offered = []
+        total_quantity_available = 0
+
+        for item in items:
+            item_lower = item.lower()
+
+            # Match requested items to inventory
+            matched_item = None
+            for inv_item, details in inventory.items():
+                if item_lower in inv_item.lower() or inv_item.lower() in item_lower:
+                    matched_item = inv_item
+                    break
+
+            if matched_item:
+                available_qty = inventory[matched_item]["qty"]
+                offered_qty = min(quantity_needed, available_qty)
+                total_quantity_available += offered_qty
+
+                items_offered.append({
+                    "item": matched_item,
+                    "quantity_offered": offered_qty,
+                    "quantity_requested": quantity_needed,
+                    "unit": inventory[matched_item]["unit"],
+                    "unit_price": inventory[matched_item]["price"]
+                })
+
+        # Calculate coverage ratio
+        coverage_ratio = min(1.0, total_quantity_available / quantity_needed) if quantity_needed > 0 else 0
+
+        # Calculate cost
+        base_cost = sum(item["quantity_offered"] * item["unit_price"] for item in items_offered)
+
+        # Priority modifiers
+        priority_mods = {
+            "critical": 0.90,  # 10% discount for critical
+            "high": 0.95,      # 5% discount
+            "medium": 1.00,    # Standard pricing
+            "low": 1.05        # 5% premium
+        }
+        total_cost = base_cost * priority_mods.get(priority, 1.00)
+
+        # Calculate delivery time
+        base_lead_time = 1.5  # hours
+        travel_time = distance_km / 40.0  # 40 km/h average speed
+        eta_hours = base_lead_time + travel_time
+
+        # Calculate delivery date
+        delivery_datetime = datetime.now() + timedelta(hours=eta_hours)
+        delivery_date = delivery_datetime.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Generate quote
+        quote = {
+            "quote_id": f"QUOTE-{request_id}-{int(datetime.now().timestamp())}",
+            "request_id": request_id,
+            "supplier_name": SUPPLIER_LOCATION,
+            "supplier_location": SUPPLIER_LOCATION,
+            "supplier_coordinates": {
+                "latitude": SUPPLIER_LAT,
+                "longitude": SUPPLIER_LON
+            },
+            "status": "available",
+            "coverage_ratio": coverage_ratio,
+            "items_offered": items_offered,
+            "total_cost": round(total_cost, 2),
+            "distance_km": round(distance_km, 2),
+            "estimated_delivery_hours": round(eta_hours, 2),
+            "estimated_delivery_date": delivery_date,
+            "delivery_mode": "truck",
+            "priority": priority,
+            "service_radius_km": SERVICE_RADIUS_KM,
+            "terms": f"delivery:truck;priority:{priority};payment:net30",
+            "timestamp": datetime.now().isoformat(),
+            "valid_until": (datetime.now() + timedelta(minutes=30)).isoformat()
+        }
+
+        print(f"✅ Quote generated: Coverage {coverage_ratio*100:.1f}%, Cost ${total_cost:.2f}, ETA {eta_hours:.1f}h\n")
+
+        return json.dumps(quote)
 
     except Exception as e:
-        error_msg = f"Error processing message: {str(e)}"
-        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        return json.dumps({
+            "status": "error",
+            "error": str(e),
+            "supplier_name": SUPPLIER_LOCATION
+        })
 
-        # Send error response
-        send_message_to_agent(
-            destination=env.sender,
-            msg=ChatMessage([TextContent(f"Sorry, I encountered an error: {str(e)}")]),
-            sender=identity,
-        )
+def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate distance between two points using Haversine formula"""
+    R = 6371  # Earth's radius in km
 
-        return {"status": "error", "message": str(e)}
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+
+    a = math.sin(delta_lat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
+    return R * c
+
+def get_inventory_dict() -> Dict[str, Dict[str, Any]]:
+    """Get inventory as dictionary"""
+    return {
+        "Blankets": {"qty": 500, "unit": "ea", "price": 15.0},
+        "Water Bottles": {"qty": 1000, "unit": "bottles", "price": 2.0},
+        "Medical Supplies": {"qty": 200, "unit": "kits", "price": 50.0},
+        "Burn Medicine": {"qty": 150, "unit": "kits", "price": 75.0},
+        "Food Rations": {"qty": 800, "unit": "meals", "price": 8.0},
+        "Tents": {"qty": 50, "unit": "ea", "price": 200.0},
+        "Clothing": {"qty": 300, "unit": "sets", "price": 25.0}
+    }
 
 def process_supply_inquiry(message: str) -> str:
     """Process a supply inquiry or quote request"""
@@ -203,14 +386,7 @@ def process_supply_inquiry(message: str) -> str:
 def get_inventory_status() -> str:
     """Return current inventory status"""
     # In production, this would query the actual database
-    inventory = {
-        "Blankets": {"qty": 500, "unit": "ea"},
-        "Water Bottles": {"qty": 1000, "unit": "bottles"},
-        "Medical Supplies": {"qty": 200, "unit": "kits"},
-        "Food Rations": {"qty": 800, "unit": "meals"},
-        "Tents": {"qty": 50, "unit": "ea"},
-        "Clothing": {"qty": 300, "unit": "sets"}
-    }
+    inventory = get_inventory_dict()
 
     response = f"""📦 **Current Inventory Status**
 
@@ -222,7 +398,7 @@ def get_inventory_status() -> str:
 """
 
     for item, details in inventory.items():
-        response += f"\n- **{item}**: {details['qty']} {details['unit']}"
+        response += f"\n- **{item}**: {details['qty']} {details['unit']} @ ${details['price']}/{details['unit']}"
 
     response += """
 

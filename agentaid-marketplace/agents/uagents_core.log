@@ -43,3 +43,5 @@
 2025-10-25 22:49:39,809 uagents_core.utils.registration INFO successfully set agent to active.
 2025-10-25 23:07:53,405 uagents_core.utils.resolver INFO Got response looking up agent endpoint
 2025-10-25 23:07:53,953 uagents_core.utils.messages ERROR Failed to send message to agent
+2025-10-26 00:52:21,804 uagents_core.utils.resolver INFO Got response looking up agent endpoint
+2025-10-26 00:52:29,587 uagents_core.utils.messages INFO Sent message to agent
