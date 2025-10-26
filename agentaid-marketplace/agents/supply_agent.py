@@ -5,6 +5,10 @@ import math
 from typing import List, Dict, Any
 
 from uagents import Agent, Context
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from agents.aid_protocol import (
     AidProtocol,
     QuoteRequest,

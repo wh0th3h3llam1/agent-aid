@@ -4,6 +4,10 @@ from typing import List, Tuple, Dict, Any
 from collections import defaultdict
 
 from uagents import Agent, Context
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from agents.aid_protocol import (
     AidProtocol, QuoteRequest, QuoteResponse, Accept, AllocationNotice, Item, Geo
 )

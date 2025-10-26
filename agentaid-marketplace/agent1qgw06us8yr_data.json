@@ -1,0 +1,18 @@
+{
+    "awaiting_need": "need_780188",
+    "quotes": [],
+    "requested_items": [
+        {
+            "name": "blanket",
+            "qty": 200,
+            "unit": "ea",
+            "unit_price": null
+        }
+    ],
+    "alloc_start_ts": 1761446803.6025522,
+    "alloc_first_deadline": 1761446806.6025522,
+    "alloc_final_deadline": 1761446812.6025522,
+    "remaining_needed": {
+        "blanket": 200
+    }
+}

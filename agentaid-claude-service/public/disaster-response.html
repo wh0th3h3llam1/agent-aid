@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentAid - Disaster Response Platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 3.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .input-section {
+            margin-bottom: 25px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+        }
+        
+        .input-group input,
+        .input-group textarea,
+        .input-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e6ed;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .input-group input:focus,
+        .input-group textarea:focus,
+        .input-group select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .priority-selector {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .priority-option {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e6ed;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .priority-option.selected {
+            border-color: #e74c3c;
+            background: #fdf2f2;
+            color: #e74c3c;
+        }
+        
+        .priority-option.critical { border-color: #e74c3c; }
+        .priority-option.high { border-color: #f39c12; }
+        .priority-option.medium { border-color: #f1c40f; }
+        .priority-option.low { border-color: #27ae60; }
+        
+        .priority-option.critical:hover { background: #fdf2f2; }
+        .priority-option.high:hover { background: #fef9e7; }
+        .priority-option.medium:hover { background: #fefce7; }
+        .priority-option.low:hover { background: #f0f9f0; }
+        
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(52, 152, 219, 0.3);
+        }
+        
+        .submit-btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        
+        .status-label {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .status-value {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-processing { background: #d1ecf1; color: #0c5460; }
+        .status-completed { background: #d4edda; color: #155724; }
+        .status-critical { background: #f8d7da; color: #721c24; }
+        
+        .results-section {
+            grid-column: 1 / -1;
+        }
+        
+        .result-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-left: 5px solid #3498db;
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .result-id {
+            font-family: 'Monaco', monospace;
+            background: #ecf0f1;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .result-priority {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .result-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .result-detail {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .result-detail strong {
+            color: #2c3e50;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .agent-status {
+            background: #e8f4fd;
+            border: 1px solid #bee5eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .agent-status h4 {
+            color: #0c5460;
+            margin-bottom: 10px;
+        }
+        
+        .agent-list {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .agent-badge {
+            background: #17a2b8;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .followup-section {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .followup-section h3 {
+            color: #856404;
+            margin-bottom: 15px;
+        }
+        
+        .completeness-bar {
+            width: 100%;
+            height: 25px;
+            background: #e9ecef;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        
+        .completeness-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ffc107 0%, #28a745 100%);
+            transition: width 0.5s ease;
+            border-radius: 12px;
+        }
+        
+        @media (max-width: 768px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2.5em;
+            }
+            
+            .result-details {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚨 AgentAid</h1>
+            <p>AI-Powered Disaster Response Coordination Platform</p>
+        </div>
+
+        <div class="main-grid">
+            <!-- Request Form -->
+            <div class="card">
+                <h2>📝 Report Disaster Need</h2>
+                
+                <form id="disasterForm">
+                    <div class="input-section">
+                        <div class="input-group">
+                            <label for="items">What do you need? *</label>
+                            <textarea id="items" placeholder="e.g., 50 blankets, 100 water bottles, medical supplies" required></textarea>
+                        </div>
+                        
+                        <div class="input-group">
+                            <label for="quantity">Quantity Details</label>
+                            <input type="text" id="quantity" placeholder="e.g., 50 units, 100 bottles, 10 boxes">
+                        </div>
+                        
+                        <div class="input-group">
+                            <label for="location">Location *</label>
+                            <input type="text" id="location" placeholder="e.g., 123 Main St, Berkeley, CA" required>
+                        </div>
+                        
+                        <div class="input-group">
+                            <label for="contact">Contact Information</label>
+                            <input type="text" id="contact" placeholder="Phone number or email">
+                        </div>
+                        
+                        <div class="input-group">
+                            <label for="victimCount">Number of People Affected</label>
+                            <input type="number" id="victimCount" placeholder="Estimated number of people">
+                        </div>
+                        
+                        <div class="input-group">
+                            <label>Priority Level *</label>
+                            <div class="priority-selector">
+                                <div class="priority-option critical" data-priority="critical">
+                                    <strong>Critical</strong><br>
+                                    <small>Life-threatening</small>
+                                </div>
+                                <div class="priority-option high" data-priority="high">
+                                    <strong>High</strong><br>
+                                    <small>Urgent</small>
+                                </div>
+                                <div class="priority-option medium selected" data-priority="medium">
+                                    <strong>Medium</strong><br>
+                                    <small>Important</small>
+                                </div>
+                                <div class="priority-option low" data-priority="low">
+                                    <strong>Low</strong><br>
+                                    <small>Standard</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="submit-btn" id="submitBtn">
+                        <span>🚀 Submit Request</span>
+                    </button>
+                </form>
+                
+                <div id="statusSection" class="status-section" style="display: none;">
+                    <h3>📊 Request Status</h3>
+                    <div id="statusContent"></div>
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="card">
+                <h2>🤖 System Status</h2>
+                
+                <div class="status-section">
+                    <div class="status-item">
+                        <span class="status-label">Claude Service</span>
+                        <span class="status-value status-processing" id="claudeStatus">Checking...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Coordination Agent</span>
+                        <span class="status-value status-pending" id="coordinatorStatus">Unknown</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Need Agents</span>
+                        <span class="status-value status-pending" id="needAgentsStatus">0 Active</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Supply Agents</span>
+                        <span class="status-value status-pending" id="supplyAgentsStatus">0 Active</span>
+                    </div>
+                </div>
+                
+                <div class="agent-status">
+                    <h4>🔄 Active Agents</h4>
+                    <div class="agent-list" id="agentList">
+                        <span class="agent-badge">Discovering...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="card results-section">
+            <h2>📋 Recent Requests</h2>
+            <div id="resultsContainer">
+                <p style="text-align: center; color: #666; padding: 40px;">
+                    No requests submitted yet. Fill out the form above to get started.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null;
+        let selectedPriority = 'medium';
+        let requestHistory = [];
+
+        // Priority selection
+        document.querySelectorAll('.priority-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.priority-option').forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
+                selectedPriority = this.dataset.priority;
+            });
+        });
+
+        // Form submission
+        document.getElementById('disasterForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await submitDisasterRequest();
+        });
+
+        async function submitDisasterRequest() {
+            const submitBtn = document.getElementById('submitBtn');
+            const statusSection = document.getElementById('statusSection');
+            const statusContent = document.getElementById('statusContent');
+            
+            // Get form data
+            const formData = {
+                items: document.getElementById('items').value,
+                quantity: document.getElementById('quantity').value,
+                location: document.getElementById('location').value,
+                contact: document.getElementById('contact').value,
+                victimCount: document.getElementById('victimCount').value,
+                priority: selectedPriority
+            };
+
+            // Validate required fields
+            if (!formData.items || !formData.location) {
+                alert('Please fill in the required fields: Items and Location');
+                return;
+            }
+
+            // Create natural language input for Claude
+            const naturalInput = createNaturalLanguageInput(formData);
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<div class="loading"></div> Processing...';
+
+            try {
+                const requestBody = {
+                    input: naturalInput,
+                    source: 'disaster_response_ui'
+                };
+
+                if (currentSessionId) {
+                    requestBody.session_id = currentSessionId;
+                }
+
+                const response = await fetch('/api/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    if (result.needs_followup) {
+                        currentSessionId = result.session_id;
+                        showFollowupNeeded(result);
+                    } else {
+                        currentSessionId = null;
+                        showRequestResult(result);
+                        addToHistory(result.data);
+                    }
+                } else {
+                    showError(result.error);
+                }
+            } catch (error) {
+                showError(`Network Error: ${error.message}`);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>🚀 Submit Request</span>';
+            }
+        }
+
+        function createNaturalLanguageInput(formData) {
+            let input = `We need ${formData.items}`;
+            
+            if (formData.quantity) {
+                input += ` (${formData.quantity})`;
+            }
+            
+            input += ` at ${formData.location}`;
+            
+            if (formData.victimCount) {
+                input += `. There are approximately ${formData.victimCount} people affected`;
+            }
+            
+            if (formData.contact) {
+                input += `. Contact: ${formData.contact}`;
+            }
+            
+            input += `. This is a ${formData.priority} priority request.`;
+            
+            return input;
+        }
+
+        function showFollowupNeeded(result) {
+            const statusContent = document.getElementById('statusContent');
+            const statusSection = document.getElementById('statusSection');
+            
+            statusContent.innerHTML = `
+                <div class="followup-section">
+                    <h3>⚠️ Additional Information Needed</h3>
+                    <p><strong>Completeness:</strong></p>
+                    <div class="completeness-bar">
+                        <div class="completeness-fill" style="width: ${result.completeness_score}%"></div>
+                    </div>
+                    <p style="text-align: center; color: #666;">${result.completeness_score}% Complete</p>
+                    <p><strong>Please provide:</strong></p>
+                    <div style="color: #856404; font-size: 16px; line-height: 1.6; white-space: pre-wrap;">${result.followup_message}</div>
+                </div>
+            `;
+            
+            statusSection.style.display = 'block';
+            
+            // Clear form for follow-up
+            document.getElementById('items').value = '';
+            document.getElementById('items').placeholder = 'Please answer the questions above...';
+            document.getElementById('items').focus();
+        }
+
+        function showRequestResult(result) {
+            const statusContent = document.getElementById('statusContent');
+            const statusSection = document.getElementById('statusSection');
+            
+            const data = result.data;
+            const priorityClass = `status-${data.priority}`;
+            
+            statusContent.innerHTML = `
+                <div class="success-message">
+                    <h3>✅ Request Processed Successfully</h3>
+                    <p><strong>Request ID:</strong> ${data.request_id}</p>
+                    <p><strong>Priority:</strong> <span class="status-value ${priorityClass}">${data.priority.toUpperCase()}</span></p>
+                    <p><strong>Status:</strong> <span class="status-value status-processing">Processing by AI Agents</span></p>
+                    <p><strong>Items:</strong> ${data.items.join(', ')}</p>
+                    <p><strong>Location:</strong> ${data.location}</p>
+                    ${data.coordinates ? `<p><strong>Coordinates:</strong> ${data.coordinates.latitude}, ${data.coordinates.longitude}</p>` : ''}
+                    <p><strong>Submitted:</strong> ${new Date(data.timestamp).toLocaleString()}</p>
+                </div>
+            `;
+            
+            statusSection.style.display = 'block';
+            
+            // Reset form
+            document.getElementById('disasterForm').reset();
+            document.querySelector('.priority-option.medium').classList.add('selected');
+            selectedPriority = 'medium';
+        }
+
+        function showError(errorMessage) {
+            const statusContent = document.getElementById('statusContent');
+            const statusSection = document.getElementById('statusSection');
+            
+            statusContent.innerHTML = `
+                <div class="error-message">
+                    <h3>❌ Error</h3>
+                    <p>${errorMessage}</p>
+                </div>
+            `;
+            
+            statusSection.style.display = 'block';
+        }
+
+        function addToHistory(requestData) {
+            requestHistory.unshift(requestData);
+            updateResultsDisplay();
+        }
+
+        function updateResultsDisplay() {
+            const container = document.getElementById('resultsContainer');
+            
+            if (requestHistory.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No requests submitted yet.</p>';
+                return;
+            }
+            
+            container.innerHTML = requestHistory.map(request => `
+                <div class="result-card">
+                    <div class="result-header">
+                        <span class="result-id">${request.request_id}</span>
+                        <span class="result-priority status-${request.priority}">${request.priority.toUpperCase()}</span>
+                    </div>
+                    <div class="result-details">
+                        <div class="result-detail">
+                            <strong>Items Needed</strong>
+                            ${request.items.join(', ')}
+                        </div>
+                        <div class="result-detail">
+                            <strong>Location</strong>
+                            ${request.location}
+                        </div>
+                        <div class="result-detail">
+                            <strong>Contact</strong>
+                            ${request.contact || 'Not provided'}
+                        </div>
+                        <div class="result-detail">
+                            <strong>Submitted</strong>
+                            ${new Date(request.timestamp).toLocaleString()}
+                        </div>
+                    </div>
+                    <div class="agent-status">
+                        <h4>🤖 Agent Status</h4>
+                        <p>Request is being processed by AI coordination agents...</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Check system status on load
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                const health = await response.json();
+                
+                document.getElementById('claudeStatus').textContent = 'Active';
+                document.getElementById('claudeStatus').className = 'status-value status-completed';
+                
+                // Update agent counts (this would be real data in production)
+                document.getElementById('needAgentsStatus').textContent = '2 Active';
+                document.getElementById('needAgentsStatus').className = 'status-value status-completed';
+                document.getElementById('supplyAgentsStatus').textContent = '3 Active';
+                document.getElementById('supplyAgentsStatus').className = 'status-value status-completed';
+                
+                document.getElementById('agentList').innerHTML = `
+                    <span class="agent-badge">Need Agent 1</span>
+                    <span class="agent-badge">Need Agent 2</span>
+                    <span class="agent-badge">Supply Agent 1</span>
+                    <span class="agent-badge">Supply Agent 2</span>
+                    <span class="agent-badge">Supply Agent 3</span>
+                `;
+                
+            } catch (error) {
+                document.getElementById('claudeStatus').textContent = 'Offline';
+                document.getElementById('claudeStatus').className = 'status-value status-critical';
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSystemStatus();
+            updateResultsDisplay();
+        });
+    </script>
+</body>
+</html>

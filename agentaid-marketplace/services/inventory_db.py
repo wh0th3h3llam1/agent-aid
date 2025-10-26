@@ -71,6 +71,19 @@ def offer_for_request(conn: sqlite3.Connection, supplier_id: int, requested: Lis
     cov = sum(ratios) / len(ratios) if ratios else 0.0
     return offered, cov
 
+def add_inventory_item(conn: sqlite3.Connection, supplier_id: int, name: str, qty: int, 
+                      unit: str, unit_price: float, category: str = "general"):
+    """Add inventory item for a supplier"""
+    conn.execute("""
+        INSERT INTO items(supplier_id, name, qty, unit, unit_price, category)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(supplier_id, name) DO UPDATE SET
+          qty = qty + excluded.qty,
+          unit = COALESCE(excluded.unit, items.unit),
+          unit_price = COALESCE(excluded.unit_price, items.unit_price),
+          category = COALESCE(excluded.category, items.category)
+    """, (supplier_id, name.lower(), qty, unit, unit_price, category))
+
 def deduct_allocation(conn: sqlite3.Connection, supplier_id: int, items: List[Dict[str, Any]]):
     with tx(conn):
         for it in items:
