@@ -1,0 +1,12 @@
+2025-10-26 01:56:44,242 uagents_core.utils.resolver ERROR Error looking up domain
+2025-10-26 01:56:44,779 uagents_core.utils.resolver ERROR Error looking up agent endpoint
+2025-10-26 01:56:44,779 uagents_core.utils.messages ERROR No endpoints found for agent
+2025-10-26 01:56:56,122 uagents_core.utils.resolver ERROR Error looking up domain
+2025-10-26 01:56:56,353 uagents_core.utils.resolver ERROR Error looking up agent endpoint
+2025-10-26 01:56:56,353 uagents_core.utils.messages ERROR No endpoints found for agent
+2025-10-26 02:03:03,345 uagents_core.utils.resolver ERROR Error looking up domain
+2025-10-26 02:03:03,702 uagents_core.utils.resolver ERROR Error looking up agent endpoint
+2025-10-26 02:03:03,703 uagents_core.utils.messages ERROR No endpoints found for agent
+2025-10-26 02:03:14,403 uagents_core.utils.resolver ERROR Error looking up domain
+2025-10-26 02:03:14,722 uagents_core.utils.resolver ERROR Error looking up agent endpoint
+2025-10-26 02:03:14,722 uagents_core.utils.messages ERROR No endpoints found for agent

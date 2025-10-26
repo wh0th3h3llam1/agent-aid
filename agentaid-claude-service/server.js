@@ -257,6 +257,35 @@ app.post('/api/extract', async (req, res) => {
 
     console.log(`\n✅ Processed ${structuredData.request_id}`);
     console.log(`📦 Available for uAgent pickup`);
+    
+    // ========================================
+    // SEND TO NEED AGENT (if running locally)
+    // ========================================
+    const NEED_AGENT_URL = process.env.NEED_AGENT_URL || 'http://localhost:8000/simple';
+    try {
+      console.log(`\n📤 Sending to Need Agent at ${NEED_AGENT_URL}...`);
+      
+      const needAgentMessage = `${input}`;  // Send original user message
+      
+      const needAgentResponse = await fetch(NEED_AGENT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: 'chat_ui_user',
+          message: needAgentMessage
+        })
+      });
+      
+      if (needAgentResponse.ok) {
+        const result = await needAgentResponse.json();
+        console.log(`✅ Request forwarded to Need Agent: ${result.status}`);
+      } else {
+        console.log(`⚠️  Need Agent returned: ${needAgentResponse.status}`);
+      }
+    } catch (needAgentError) {
+      console.log(`⚠️  Could not reach Need Agent (may be on Agentverse): ${needAgentError.message}`);
+    }
+    
     console.log('='.repeat(80) + '\n');
 
     res.json({

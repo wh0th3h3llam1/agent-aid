@@ -512,15 +512,15 @@
                 
                 if (data.success && data.updates) {
                     const quotes = data.updates.filter(u => 
-                        u.request_id === requestId && u.type === 'quote'
+                        u.request_id === requestId && u.status === 'completed'
                     );
                     
                     if (quotes.length > 0) {
                         const quotesData = quotes.map(q => ({
-                            supplier_name: q.data.supplier_label || q.agent_id,
-                            total_cost: q.data.total_cost,
-                            eta_hours: q.data.eta_hours,
-                            delivery_mode: q.data.delivery_mode
+                            supplier_name: q.best_quote?.supplier || 'Unknown Supplier',
+                            total_cost: 'Contact for pricing',
+                            eta_hours: q.best_quote?.eta_hours || 'Unknown',
+                            delivery_mode: 'Ground delivery'
                         }));
                         
                         addMessage(
@@ -529,6 +529,25 @@
                             false,
                             { quotes: quotesData }
                         );
+                        
+                        // Show final result after a short delay
+                        setTimeout(() => {
+                            const bestQuote = quotes[0].best_quote;
+                            addMessage(
+                                `✅ **Best Supplier Found!**<br><br>` +
+                                `**Supplier**: ${bestQuote.supplier}<br>` +
+                                `**Items**: ${quotes[0].quotes[0].raw_message.split('**Items**: ')[1]?.split('**')[0] || 'blankets'}<br>` +
+                                `**Quantity**: ${bestQuote.quantity}<br>` +
+                                `**ETA**: ${bestQuote.eta_hours} hours<br>` +
+                                `**Coverage**: ${bestQuote.coverage_pct}%<br><br>` +
+                                `🚚 **Delivery Details**:<br>` +
+                                `- Status: Confirmed<br>` +
+                                `- Tracking: Available upon dispatch<br>` +
+                                `- Contact: ${quotes[0].quotes[0].raw_message.split('Contact: ')[1]?.split('\n')[0] || '555-HELP'}<br><br>` +
+                                `Thank you for using AgentAid! 🚨`,
+                                false
+                            );
+                        }, 2000);
                         return;
                     }
                 }

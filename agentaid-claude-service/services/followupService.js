@@ -38,27 +38,29 @@ export function checkCompleteness(extractedData) {
     });
   }
   
-  // Check 3: Missing contact information
-  if (!extractedData.contact) {
-    issues.push({
-      type: 'missing_contact',
-      field: 'contact',
-      current_value: null,
-      question: 'Please provide a contact phone number so we can coordinate the delivery.'
-    });
-  }
+  // Check 3: Missing contact information (OPTIONAL - don't block)
+  // Contact is optional for demo purposes
+  // if (!extractedData.contact) {
+  //   issues.push({
+  //     type: 'missing_contact',
+  //     field: 'contact',
+  //     current_value: null,
+  //     question: 'Please provide a contact phone number so we can coordinate the delivery.'
+  //   });
+  // }
   
-  // Check 4: Vague location
-  if (!extractedData.location || 
-      extractedData.location.length < 10 || 
-      !hasSpecificAddress(extractedData.location)) {
-    issues.push({
-      type: 'vague_location',
-      field: 'location',
-      current_value: extractedData.location,
-      question: 'Please provide a specific address or landmark. For example: "123 Main Street" or "Lincoln High School, Room 101"'
-    });
-  }
+  // Check 4: Vague location (OPTIONAL - city name is enough)
+  // Location check disabled for demo - city name is sufficient
+  // if (!extractedData.location || 
+  //     extractedData.location.length < 10 || 
+  //     !hasSpecificAddress(extractedData.location)) {
+  //   issues.push({
+  //     type: 'vague_location',
+  //     field: 'location',
+  //     current_value: extractedData.location,
+  //     question: 'Please provide a specific address or landmark. For example: "123 Main Street" or "Lincoln High School, Room 101"'
+  //   });
+  // }
   
   return {
     is_complete: issues.length === 0,

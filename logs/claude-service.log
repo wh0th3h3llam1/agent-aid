@@ -1,0 +1,45 @@
+[dotenv@17.2.3] injecting env (3) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (0) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  override existing env vars with { override: true }
+📊 Initializing ChromaDB (in-memory)...
+✅ ChromaDB initialized
+
+████████████████████████████████████████████████████████████████████████████████
+█                                                                              █
+█  🚨 AGENTAID - DISASTER RESPONSE SYSTEM                                      █
+█  Powered by Claude Sonnet 4.5 + Fetch.ai                                     █
+█                                                                              █
+████████████████████████████████████████████████████████████████████████████████
+
+📊 SERVER STATUS:
+   Port: 3000
+   Environment: development
+   Local: http://localhost:3000
+   Network: http://0.0.0.0:3000
+
+🔗 KEY ENDPOINTS:
+   Health Check: http://localhost:3000/health
+   Extract: POST http://localhost:3000/api/extract
+   Geocode: POST http://localhost:3000/api/geocode
+
+🤖 FETCH.AI INTEGRATION:
+   Pending: GET http://localhost:3000/api/uagent/pending-requests
+   Nearby: POST http://localhost:3000/api/uagent/requests-nearby
+   Claim: POST http://localhost:3000/api/uagent/claim-request
+   Update: POST http://localhost:3000/api/uagent/update
+
+💾 FEATURES ENABLED:
+   ✅ Claude Sonnet 4.5 Extraction
+   ✅ Intelligent Follow-up System
+   ✅ ChromaDB Vector Search
+   ✅ Geocoding & Coordinates
+   ✅ Session Management
+   ✅ uAgent Integration
+   ✅ Multilingual Support
+   ✅ Priority-based Routing
+
+🎯 READY FOR DEMO!
+████████████████████████████████████████████████████████████████████████████████
+
