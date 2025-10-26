@@ -68,7 +68,9 @@ class AgentStatus:
     capabilities: List[str]
 
 # ---------- agent setup ----------
-agent = Agent(name=COORDINATOR_NAME, seed=COORDINATOR_SEED, port=COORDINATOR_PORT)
+# Configure endpoint so other agents can send messages back
+COORDINATOR_ENDPOINT = [f"http://127.0.0.1:{COORDINATOR_PORT}/submit"]
+agent = Agent(name=COORDINATOR_NAME, seed=COORDINATOR_SEED, port=COORDINATOR_PORT, endpoint=COORDINATOR_ENDPOINT)
 
 # ---------- state management ----------
 active_requests: Dict[str, DisasterRequest] = {}
@@ -80,15 +82,20 @@ request_assignments: Dict[str, str] = {}  # request_id -> agent_id
 async def startup(ctx: Context):
     ctx.logger.info(f"[{COORDINATOR_NAME}] Address: {agent.address}")
     ctx.logger.info("Coordination Agent started - monitoring Claude service")
+    ctx.logger.info(f"NEED_AGENT_ADDRS: {NEED_AGENT_ADDRESSES}")
+    ctx.logger.info(f"SUPPLY_AGENT_ADDRS: {SUPPLY_AGENT_ADDRESSES}")
     
     # Start monitoring Claude service for new requests
     asyncio.create_task(monitor_claude_service(ctx))
     
     # Start agent discovery
     asyncio.create_task(discover_agents(ctx))
+    
+    ctx.logger.info("Background tasks started")
 
 async def monitor_claude_service(ctx: Context):
     """Poll Claude service for new disaster requests"""
+    ctx.logger.info("Starting Claude service monitoring loop")
     while True:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -98,8 +105,11 @@ async def monitor_claude_service(ctx: Context):
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("success") and data.get("requests"):
+                        ctx.logger.info(f"Found {len(data['requests'])} pending request(s)")
                         for req_data in data["requests"]:
                             await process_new_request(ctx, req_data)
+                    else:
+                        ctx.logger.debug("No pending requests")
                 
                 # Get agent updates
                 updates_response = await client.get(f"{CLAUDE_SERVICE_URL}/api/uagent/updates")
@@ -110,13 +120,14 @@ async def monitor_claude_service(ctx: Context):
                             await process_agent_update(ctx, update)
                             
         except Exception as e:
-            # Don't log error every time - just wait and try again
-            pass
+            ctx.logger.error(f"Error monitoring Claude service: {e}")
         
         await asyncio.sleep(10)  # Poll every 10 seconds
 
 async def discover_agents(ctx: Context):
     """Discover and register available agents"""
+    ctx.logger.info("Starting agent discovery")
+    first_run = True
     while True:
         try:
             # In a real implementation, this would use agent discovery protocols
@@ -133,6 +144,7 @@ async def discover_agents(ctx: Context):
                         last_seen=time.time(),
                         capabilities=["disaster_assessment", "priority_evaluation"]
                     )
+                    ctx.logger.info(f"Registered need agent: {addr[:30]}...")
             
             # Register known supply agents
             for addr in SUPPLY_AGENT_ADDRESSES:
@@ -145,6 +157,11 @@ async def discover_agents(ctx: Context):
                         last_seen=time.time(),
                         capabilities=["inventory_management", "logistics_coordination"]
                     )
+                    ctx.logger.info(f"Registered supply agent: {addr[:30]}...")
+            
+            if first_run:
+                ctx.logger.info(f"Agent registry initialized: {len(agent_registry)} agents")
+                first_run = False
                     
         except Exception as e:
             ctx.logger.error(f"Error in agent discovery: {e}")
@@ -196,6 +213,9 @@ async def process_new_request(ctx: Context, req_data: Dict[str, Any]):
 async def assign_request_to_agents(ctx: Context, disaster_req: DisasterRequest):
     """Assign disaster request to appropriate need and supply agents"""
     
+    ctx.logger.info(f"Assigning request {disaster_req.request_id} to agents")
+    ctx.logger.info(f"Agent registry size: {len(agent_registry)}")
+    
     # Find available need agents
     need_agents = [agent for agent in agent_registry.values() 
                    if agent.agent_type == "need" and agent.status == "active"]
@@ -204,8 +224,11 @@ async def assign_request_to_agents(ctx: Context, disaster_req: DisasterRequest):
     supply_agents = [agent for agent in agent_registry.values() 
                      if agent.agent_type == "supply" and agent.status == "active"]
     
+    ctx.logger.info(f"Found {len(need_agents)} need agents, {len(supply_agents)} supply agents")
+    
     if not need_agents or not supply_agents:
         ctx.logger.warning(f"No available agents for request {disaster_req.request_id}")
+        ctx.logger.warning(f"Need agents: {len(need_agents)}, Supply agents: {len(supply_agents)}")
         return
     
     # Create quote request for need agents

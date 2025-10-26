@@ -107,6 +107,10 @@ async def on_quote(ctx: Context, sender: str, req: QuoteRequest):
     Build a quote from current DB stock. Only offer what's available.
     Reject if out of radius or ETA > SLA.
     """
+    ctx.logger.info(f"[{SUPPLIER_NAME}] Received QuoteRequest from {sender[:20]}...")
+    ctx.logger.info(f"  Need ID: {req.need_id}")
+    ctx.logger.info(f"  Items: {[f'{it.name}:{it.qty}' for it in (req.items or [])]}")
+    
     # load latest config each time
     global CFG
     CFG = get_supplier_config(CONN, SUPPLIER_NAME) or CFG

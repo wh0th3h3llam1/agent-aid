@@ -71,8 +71,8 @@ class FixedAgentAidOrchestrator:
                     'NEED_LABEL': 'Berkeley Emergency Center',
                     'NEED_PRIORITY': 'critical',
                     'NEED_ITEMS_JSON': '[{"name":"blanket","qty":200,"unit":"ea"}]',
-                    # Add supply agent addresses (will be updated after they start)
-                    'SUPPLY_ADDRS': ''
+                    # Supply agent addresses (deterministically generated from seeds)
+                    'SUPPLY_ADDRS': 'agent1qvp9jjj2rjtnj5nhnrnvmnm856l8t6gs7uyjw9ucpunepz9fmvpr5r4q8q3,agent1qf4u39wdxxdpucmt2t49dr0jw80f9cqlyqwvhue8yrayg9hf7r08j8cd9mn'
                 }
             },
             'coordination_agent': {
@@ -83,7 +83,10 @@ class FixedAgentAidOrchestrator:
                     'COORDINATOR_NAME': 'coordination_agent_1',
                     'COORDINATOR_SEED': 'coordination_agent_1_demo_seed',
                     'COORDINATOR_PORT': '8002',
-                    'CLAUDE_SERVICE_URL': 'http://localhost:3000'
+                    'CLAUDE_SERVICE_URL': 'http://localhost:3000',
+                    # Agent addresses for coordination
+                    'NEED_AGENT_ADDRS': 'agent1qgw06us8yrrmnx40dq7vlm5vqyd25tv3qx3kyax9x5k2kz7kuguxjy4a8hu',
+                    'SUPPLY_AGENT_ADDRS': 'agent1qvp9jjj2rjtnj5nhnrnvmnm856l8t6gs7uyjw9ucpunepz9fmvpr5r4q8q3,agent1qf4u39wdxxdpucmt2t49dr0jw80f9cqlyqwvhue8yrayg9hf7r08j8cd9mn'
                 }
             }
         }
@@ -205,24 +208,16 @@ class FixedAgentAidOrchestrator:
             print("❌ Failed to start Claude service. Exiting.")
             return False
         
-        # Start supply agents first
+        # Start supply agents (addresses are already configured in env_vars)
         supply_agents = ['supply_agent_emergency', 'supply_agent_family']
-        supply_addresses = []
         
         for agent_name in supply_agents:
             if self.start_service(agent_name, self.services[agent_name]):
                 print(f"✅ {agent_name} started")
-                # In a real implementation, we'd get the actual agent address
-                # For now, we'll use placeholder addresses
-                supply_addresses.append(f"agent1q{agent_name}_placeholder")
             else:
                 print(f"⚠️  Failed to start {agent_name}, continuing...")
         
-        # Update need agent with supply addresses
-        if supply_addresses:
-            self.services['need_agent']['env_vars']['SUPPLY_ADDRS'] = ','.join(supply_addresses)
-        
-        # Start need agent
+        # Start need agent (supply addresses already configured)
         if not self.start_service('need_agent', self.services['need_agent']):
             print("⚠️  Failed to start need agent, continuing...")
         

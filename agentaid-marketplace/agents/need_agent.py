@@ -135,8 +135,12 @@ async def _gather_then_allocate(ctx: Context):
 
 @AidProtocol.on_message(model=QuoteResponse)
 async def on_quote(ctx: Context, sender: str, resp: QuoteResponse):
+    ctx.logger.info(f"[{NEEDER_NAME}] Received QuoteResponse from {sender[:20]}...")
+    ctx.logger.info(f"  Need ID: {resp.need_id}, OK: {resp.ok}")
+    
     need_id = ctx.storage.get("awaiting_need")
     if not need_id or resp.need_id != need_id:
+        ctx.logger.info(f"  Ignoring - awaiting: {need_id}, got: {resp.need_id}")
         return
 
     quotes: List[Dict[str, Any]] = ctx.storage.get("quotes") or []

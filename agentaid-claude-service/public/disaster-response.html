@@ -680,14 +680,76 @@
                             ${new Date(request.timestamp).toLocaleString()}
                         </div>
                     </div>
-                    <div class="agent-status">
+                    <div class="agent-status" id="agent-status-${request.request_id}">
                         <h4>🤖 Agent Status</h4>
-                        <p>Request is being processed by AI coordination agents...</p>
+                        <p>Checking for quotes...</p>
                     </div>
                 </div>
             `).join('');
+            
+            // Poll for quotes for each request
+            requestHistory.forEach(request => {
+                pollForQuotes(request.request_id);
+            });
         }
 
+        // Poll for quotes from agents
+        async function pollForQuotes(requestId) {
+            try {
+                const response = await fetch('/api/uagent/updates');
+                const data = await response.json();
+                
+                if (data.success && data.updates) {
+                    // Filter quotes for this request
+                    const quotes = data.updates.filter(u => 
+                        u.request_id === requestId && u.type === 'quote'
+                    );
+                    
+                    const statusDiv = document.getElementById(`agent-status-${requestId}`);
+                    if (!statusDiv) return;
+                    
+                    if (quotes.length > 0) {
+                        // Display quotes
+                        const quotesHtml = quotes.map(quote => {
+                            const quoteData = quote.data || {};
+                            const items = quoteData.items || [];
+                            const itemText = items.map(i => `${i.qty} ${i.name} @ $${i.unit_price}`).join(', ');
+                            
+                            return `
+                                <div style="background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                                    <div style="font-weight: 600; color: #0369a1; margin-bottom: 8px;">
+                                        📦 ${quoteData.supplier_label || quote.agent_id}
+                                    </div>
+                                    <div style="font-size: 0.9em; color: #334155;">
+                                        <div><strong>Items:</strong> ${itemText}</div>
+                                        <div><strong>Total Cost:</strong> $${quoteData.total_cost || 0}</div>
+                                        <div><strong>ETA:</strong> ${(quoteData.eta_hours || 0).toFixed(1)} hours</div>
+                                        <div><strong>Delivery:</strong> ${quoteData.delivery_mode || 'standard'}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        statusDiv.innerHTML = `
+                            <h4>✅ Quotes Received (${quotes.length})</h4>
+                            ${quotesHtml}
+                        `;
+                    } else {
+                        // Still waiting
+                        statusDiv.innerHTML = `
+                            <h4>🤖 Agent Status</h4>
+                            <p>Waiting for supplier quotes... (polling every 3 seconds)</p>
+                        `;
+                        
+                        // Poll again in 3 seconds
+                        setTimeout(() => pollForQuotes(requestId), 3000);
+                    }
+                }
+            } catch (error) {
+                console.error('Error polling for quotes:', error);
+            }
+        }
+        
         // Check system status on load
         async function checkSystemStatus() {
             try {
